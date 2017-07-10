@@ -27,6 +27,7 @@
 % along with CERR.  If not, see <http://www.gnu.org/licenses/>.
 
 %% --------------------------- Set Environment Vars for DCM4CHE
+clear
 flag = init_ML_DICOM;
 
 if ~flag
@@ -45,7 +46,25 @@ end
 tic;
 
 CERRStatusString('Scanning native Pinnacle files');
-
+%%--- get LA machine physic data
+% phy_data = 'D:\用户目录\Documents\GitHub\Physics\ReadOnlyMachineDB';
+% MachineList = {};
+% Dirlist = dir(phy_data)
+% linenum = 1;
+% for line = 1:length(dir(phy_data))
+%     if exist(fullfile(phy_data,Dirlist(line,1).name,'Pinnacle.Machine'),'file')
+%         data_phys = read_1_pinnacle_file(fullfile(phy_data,Dirlist(line,1).name,'Pinnacle.Machine'),0);
+%         MachineList{1,linenum} = data_phys;
+%         linenum = linenum + 1;
+%     end
+% end
+machine_phy_data = 'D:\用户目录\Documents\GitHub\Pinnacle3_Native_parse\MachinePhyData.mat';
+machine_list = load(machine_phy_data,'-mat');
+%machine_list.MachineList{1,N}.Name Varian 600CD
+%machine_list.MachineList{1,N}.PhotonEnergyList.MachineEnergy.PhysicsData.O
+%utpuFactor.SourceToCalibrationPointDistance 110
+%machine_list.MachineList{1,N}.PhotonEnergyList.MachineEnergy.PhysicsData.O
+%utpuFactor.DosePerMuAtCalibration 0.665
 %% --------------------------- Read Patient data
 data_pat = read_1_pinnacle_file(fullfile(pin_path,'Patient'),0);
 
