@@ -36,7 +36,7 @@ end
 
 %% --------------------------- Get the path of patient directory to be selected for import.
 %pin_path = uigetdir(pwd','Select the directory containing native Pinnacle data');
-pin_path = 'D:\User\Documents\MATLAB\Pinnacledata\Patient_Brain';																 
+pin_path = 'D:\User\Documents\MATLAB\Pinnacledata\Patient_13863';																 
 
 if isnumeric(pin_path) || ~exist(fullfile(pin_path,'Patient'),'file')
     disp('Import of Pinnacle data aborted');
@@ -58,8 +58,8 @@ CERRStatusString('Scanning native Pinnacle files');
 %         linenum = linenum + 1;
 %     end
 % end
-machine_phy_data = 'D:\用户目录\Documents\GitHub\Pinnacle3_Native_parse\MachinePhyData.mat';
-machine_list = load(machine_phy_data,'-mat');
+% machine_phy_data = 'D:\用户目录\Documents\GitHub\Pinnacle3_Native_parse\MachinePhyData.mat';
+% machine_list = load(machine_phy_data,'-mat');
 %machine_list.MachineList{1,N}.Name Varian 600CD
 %machine_list.MachineList{1,N}.PhotonEnergyList.MachineEnergy.PhysicsData.O
 %utpuFactor.SourceToCalibrationPointDistance 110
@@ -179,7 +179,7 @@ for iPlan = 1:length(data_pat.PlanList.Plan)
                     end
                     switch upper(data_scan.patient_position)
                         case 'HFS' %+x,-y,-z
-                            %                             planC{indexS.structures}(end).contour(sliceNum).segments(end).points(:,2) = 2*planC{indexS.scan}(assocScanNum).scanInfo(1).yOffset - planC{indexS.structures}(end).contour(sliceNum).segments(end).points(:,2);
+                            %planC{indexS.structures}(end).contour(sliceNum).segments(end).points(:,2) = 2*planC{indexS.scan}(assocScanNum).scanInfo(1).yOffset - planC{indexS.structures}(end).contour(sliceNum).segments(end).points(:,2);
                             %data(:,2) = 2*yOffset*10 - data(:,2);
                         case 'HFP' %-x,+y,-z
                             planC{indexS.structures}(end).contour(sliceNum).segments(end).points(:,1) = 2*planC{indexS.scan}(assocScanNum).scanInfo(1).xOffset - planC{indexS.structures}(end).contour(sliceNum).segments(end).points(:,1);
@@ -198,7 +198,12 @@ for iPlan = 1:length(data_pat.PlanList.Plan)
 
     %Read transformation matrices
     volumeInfo_filename = fullfile(pin_path,['Plan_',num2str(planID)],'plan.VolumeInfo');
-    data_plan_volumeInfo = read_1_pinnacle_file(volumeInfo_filename,0);
+    if exist(volumeInfo_filename,'file')
+        try
+            data_plan_volumeInfo = read_1_pinnacle_file(volumeInfo_filename,0);
+        catch
+        end
+    end
 
     %Scan Names
     for volNum = 1:length(data_plan_volumeInfo.VolumeDisplay)
@@ -209,9 +214,11 @@ for iPlan = 1:length(data_pat.PlanList.Plan)
         if ~isempty(volNum) % && data_plan_volumeInfo.VolumeDisplay{volNum}.Moveable
             planC{indexS.scan}(scanNum).transM = data_plan_volumeInfo.VolumeDisplay{volNum}.LocalToWorldTransform.Data.Points;
         end
-    end
-
+    end   
+   
 end
+
+
 
 % CERR Options
 planC{indexS.CERROptions} = CERROptions;
@@ -224,6 +231,7 @@ planC = setUniformizedData(planC);
 %% ---------------------------  Populate indexS.dose field
 
 for iPlan = 1:length(data_pat.PlanList.Plan)
+    fprintf('Plan_name: %s\n',data_pat.PlanList.Plan{iPlan,1}.PlanName);
     if length(data_pat.PlanList.Plan) == 1
         imageSetID = data_pat.PlanList.Plan.PrimaryCTImageSetID;
     else
@@ -243,6 +251,24 @@ for iPlan = 1:length(data_pat.PlanList.Plan)
         plan_trial_data = read_1_pinnacle_file(fullfile(planPath,'plan.Trial'),0);
     else
         continue
+    end
+    
+     % Read plan's points coordinate
+    points_filename = fullfile(pin_path,['Plan_',num2str(planID)],'plan.Points');
+    if exist(points_filename,'file')
+        try
+            data_plan_points = read_1_pinnacle_file(points_filename,0);
+        catch
+        end
+    end
+    
+    % Read plan's machine infomation( physic data )
+    machine_filename = fullfile(pin_path,['Plan_',num2str(planID)],'plan.Pinnacle.Machines');
+    if exist(machine_filename,'file')
+        try
+            data_plan_machine = read_1_pinnacle_file(machine_filename,0);
+        catch
+        end
     end
 
     for iTrial = 1:length(plan_trial_data.Trial)
@@ -286,7 +312,7 @@ for iPlan = 1:length(data_pat.PlanList.Plan)
             prescription = prescriptions;
             % 	selection = 1;
         end
-
+        
         fprintf('Prescription = %s\n',prescription.Name);
 
         numbeam = length(beams);
@@ -309,16 +335,28 @@ for iPlan = 1:length(data_pat.PlanList.Plan)
             end
             fname = dosefilenames{k};
             %dose_per_beam = read_pinnacle_dose_file(fname,dosedim);
+            
 
             try
                 dose_per_beam = read_pinnacle_dose_file(fileName,dosedim,planPath);
                 factor = beam.MonitorUnitInfo.NormalizedDose*beam.MonitorUnitInfo.CollimatorOutputFactor*beam.MonitorUnitInfo.TotalTransmissionFraction;
-                mu = round(beam.MonitorUnitInfo.PrescriptionDose/(factor*0.665));
+                machine_energy_list = data_plan_machine.Item_0.PhotonEnergyList.MachineEnergy;
+                if length(machine_energy_list) == 1
+                    dose_per_mu = machine_energy_list.PhysicsData.OutputFactor.DosePerMuAtCalibration;
+                else
+                    for line = 1:length(machine_energy_list)
+                        if strcmp(machine_energy_list{line,1}.Name,beam.MachineEnergyName)
+                            dose_per_mu = machine_energy_list{line,1}.PhysicsData.OutputFactor.DosePerMuAtCalibration;
+                        end
+                    end
+                end                
+                MUs = round(beam.MonitorUnitInfo.PrescriptionDose/(factor*dose_per_mu));
+                
 			catch
-                continue
+                %continue
             end
 
-            fprintf('Beam %s, mu = %d\n',beam.Name,beam.ODM.MUForODM);
+            fprintf('Beam %s, MUs = %d\n',beam.Name,MUs);
             %dose = dose + doses(:,:,:,k)*beam.ODM.MUForODM;
             %dose = dose + dose_per_beam*beam.ODM.MUForODM;
             dose = dose + dose_per_beam * beam.Weight;
@@ -340,8 +378,10 @@ for iPlan = 1:length(data_pat.PlanList.Plan)
         PrescriptionDose = prescription.PrescriptionDose;
         %Number of fractions
         numFractions = prescription.NumberOfFractions;
+        %PrescriptionPercent 
+        PrePercent = prescription.PrescriptionPercent * 0.01;
         %Total Dose
-        totalPrescriptionDose = PrescriptionDose * numFractions / 100; %Gy
+        totalPrescriptionDose = PrescriptionDose * numFractions / PrePercent; %Gy(perpercent*100)
         %Normalization method
         [jnk,NormalizationMethod] = strtok(prescription.NormalizationMethod);
         NormalizationMethod = deblank2(NormalizationMethod);
@@ -389,5 +429,10 @@ toc;
 indexS = planC{end};
 
 %% --------------------------- Save planC
-save_planC(planC,planC{indexS.CERROptions});
+%save_planC(planC,planC{indexS.CERROptions});
+
+%% export to dicom-rt
+destDir = 'D:\User\Documents\MATLAB\bb';
+export_planC_to_DICOM(planC,destDir);
+
 
